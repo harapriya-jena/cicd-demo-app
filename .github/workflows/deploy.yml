@@ -1,71 +1,132 @@
-name: Deploy Vite App to EC2
+name: CI/CD for React App
 
 
+# 1) Trigger this workflow on every push to "main"
 on:
     push:
-        branches:
-            - main # Trigger on push to the main branch
+        branches: [main]
 
 
 jobs:
     deploy:
+        # 2) Run all steps on a fresh Ubuntu VM hosted by GitHub Actions
         runs-on: ubuntu-latest
 
 
         steps:
-            - name: Checkout code
+            # 3) Step: Check out your repository code so we can deploy it
+            - name: Checkout
               uses: actions/checkout@v3
 
 
-            - name: Set up Node.js
-              uses: actions/setup-node@v3
+            # 4) Step: SSH into your EC2 instance and run provisioning + deploy scripts
+            - name: React app EC2 instance
+              uses: appleboy/ssh-action@v0.1.6
               with:
-                  node-version: "16" # Use Node.js version 16
-
-
-            - name: Install dependencies
-              run: npm install
-
-
-            - name: Build the Vite app
-              run: npm run build
-
-
-            - name: List files in dist directory
-              run: |
-                  echo "Listing files in dist directory:"
-                  ls -la dist/
-
-
-            - name: Ensure dist directory exists on EC2
-              uses: appleboy/ssh-action@v0.1.5
-              with:
+                  # 4a) Which server to connect to (stored as a secret)
                   host: ${{ secrets.EC2_HOST }}
-                  username: ${{ secrets.EC2_User }}
+
+
+                  # 4b) Which user on that server
+                  username: ${{ secrets.EC2_USERNAME }}
+
+
+                  # 4c) SSH private key (stored as a secret, exported from PuTTYgen or OpenSSH)
                   key: ${{ secrets.EC2_SSH_KEY }}
+
+
+                  # 4d) SSH port (standard is 22)
+                  port: ${{ secrets.EC2_PORT }}
+
+
+                  # 5) The actual shell script to run over SSH
                   script: |
-                      sudo mkdir -p /var/www/html/dist
-                      sudo chown -R ubuntu:ubuntu /var/www/html/dist # Adjust ownership if necessary
+                      set -e
 
 
-            - name: Copy files via SSH
-              uses: appleboy/scp-action@v0.1.4
-              with:
-                  host: ${{ secrets.EC2_HOST }} # Add your EC2 instance IP to GitHub Secrets
-                  username: ${{ secrets.EC2_User }}
-                  key: ${{ secrets.EC2_SSH_KEY }} # Add your private SSH key to GitHub Secrets
-                  source: "dist/*" # The source directory for Vite build output
-                  target: "/var/www/html/dist" # Ensure this points to the correct path
 
 
-            - name: Restart NGINX on EC2
-              uses: appleboy/ssh-action@v0.1.5
-              with:
-                  host: ${{ secrets.EC2_HOST }} # EC2 public IP in GitHub Secrets
-                  username: ${{ secrets.EC2_User }}
-                  key: ${{ secrets.EC2_SSH_KEY }} # SSH private key in GitHub Secrets
-                  script: |
-                      sudo systemctl restart nginx  # Restart NGINX after deployment
+                      sudo rm -f /etc/nginx/sites-enabled/default
+
+
+
+
+                      sudo tee /etc/nginx/sites-available/react-app.conf > /dev/null << 'EOF'
+                      upstream react_app {
+                          server 127.0.0.1:3000;
+                      }
+
+
+
+
+                      server {
+                          # Listen on port 80 as the default server
+                          listen 80 default_server;
+                          listen [::]:80 default_server;
+                          server_name _;
+
+
+
+
+                          # Proxy all requests to the React container on localhost:3000
+                          location / {
+                              proxy_http_version 1.1;
+                          }
+                      }
+                      EOF
+
+
+
+
+                      # Enable the new site by symlinking into sites-enabled
+                      sudo ln -sfn /etc/nginx/sites-available/react-app.conf /etc/nginx/sites-enabled/react-app.conf
+
+
+
+
+                      # Test Nginx config syntax and restart to apply changes
+                      sudo nginx -t
+                      sudo systemctl restart nginx
+
+
+
+
+                      # ---------------------------------------------------
+                      # C) Pull latest code, build Docker image, and run it
+                      # ---------------------------------------------------
+                      rm -rf react-app
+                      mkdir react-app
+                      cd ~/react-app
+                      git clone https://github.com/yogeshOzaDeanInfotech/cicd-react-demo.git .
+                      git fetch origin main
+
+
+                      sudo docker stop react-app
+                      sudo docker rm react-app
+                      # Build the multi-stage Docker image defined in your Dockerfile
+                      sudo docker build -t react-app:latest .
+
+
+
+
+                      # Run the new container:
+                      # - Name it "react-app"
+                      # - Map host port 3000 → container port 80
+                      sudo docker run -d \
+                        --name react-app \
+                        -p 3000:80 \
+                        react-app:latest
+
+
+
+
+
+
+
+
+
+
+
 
 
 
