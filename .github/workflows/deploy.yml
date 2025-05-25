@@ -47,7 +47,7 @@ jobs:
                       # ---------------------------------------------------
                       # B) Write your custom Nginx proxy config for React
                       # ---------------------------------------------------
-                      sudo tee /etc/nginx/sites-available/react-app.conf > /dev/null << 'EOF'
+                      sudo nano /etc/nginx/sites-available/react-app.conf > /dev/null << 'EOF'
                       upstream react_app {
                           server 127.0.0.1:3000;
                       }
