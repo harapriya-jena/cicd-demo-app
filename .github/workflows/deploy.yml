@@ -24,22 +24,21 @@ jobs:
             set -e
 
             # Update packages
-            sudo yum update -y
+            sudo dnf update -y
 
-            # Install Nginx if not present
-            sudo amazon-linux-extras enable nginx1
-            sudo yum install -y nginx
+            # Install Nginx
+            sudo dnf install -y nginx
 
-            # Create custom NGINX directory layout (Amazon Linux doesn't have sites-available)
+            # Create custom NGINX directory layout
             sudo mkdir -p /etc/nginx/sites-available
             sudo mkdir -p /etc/nginx/sites-enabled
 
-            # Include sites-enabled in main config if not already
+            # Include sites-enabled in nginx.conf if not already
             if ! grep -q 'include /etc/nginx/sites-enabled/\*;' /etc/nginx/nginx.conf; then
               sudo sed -i '/http {/a \\tinclude /etc/nginx/sites-enabled/*;' /etc/nginx/nginx.conf
             fi
 
-            # Write NGINX config directly (no nano in CI!)
+            # Write Nginx config directly
             cat << 'EOF' | sudo tee /etc/nginx/sites-available/react-app.conf > /dev/null
             upstream react_app {
                 server 127.0.0.1:3000;
@@ -61,40 +60,40 @@ jobs:
             }
             EOF
 
-            # Enable the config
+            # Enable the new config
             sudo ln -sf /etc/nginx/sites-available/react-app.conf /etc/nginx/sites-enabled/react-app.conf
 
-            # Test and reload NGINX
+            # Test and restart Nginx
             sudo nginx -t
             sudo systemctl enable nginx
             sudo systemctl restart nginx
 
             # Install Docker if not already installed
             if ! command -v docker &> /dev/null; then
-              sudo yum install -y docker
-              sudo systemctl start docker
-              sudo systemctl enable docker
+              sudo dnf install -y docker
+              sudo systemctl enable --now docker
               sudo usermod -aG docker ec2-user
             fi
 
-            # Pull latest code & build Docker image
+            # Prepare app directory
             cd ~
             rm -rf react-app
             mkdir react-app
             cd react-app
 
+            # Clone repo code
             git clone https://github.com/${{ github.repository }} .
             git checkout main
 
             # Build Docker image
             sudo docker build -t react-app:latest .
 
-            # Remove old container if it exists
+            # Stop and remove any previous container
             sudo docker stop react-app || true
             sudo docker rm react-app || true
 
-            # Run new container on port 3000 → container port 80
+            # Run new container
             sudo docker run -d --name react-app -p 3000:80 react-app:latest
 
-            # Clean up dangling images
+            # Remove dangling Docker images
             sudo docker image prune -f
