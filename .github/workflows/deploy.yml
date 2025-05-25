@@ -1,0 +1,71 @@
+name: Deploy Vite App to EC2
+
+
+on:
+    push:
+        branches:
+            - main # Trigger on push to the main branch
+
+
+jobs:
+    deploy:
+        runs-on: ubuntu-latest
+
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v3
+
+
+            - name: Set up Node.js
+              uses: actions/setup-node@v3
+              with:
+                  node-version: "16" # Use Node.js version 16
+
+
+            - name: Install dependencies
+              run: npm install
+
+
+            - name: Build the Vite app
+              run: npm run build
+
+
+            - name: List files in dist directory
+              run: |
+                  echo "Listing files in dist directory:"
+                  ls -la dist/
+
+
+            - name: Ensure dist directory exists on EC2
+              uses: appleboy/ssh-action@v0.1.5
+              with:
+                  host: ${{ secrets.EC2_HOST }}
+                  username: ${{ secrets.EC2_User }}
+                  key: ${{ secrets.EC2_SSH_KEY }}
+                  script: |
+                      sudo mkdir -p /var/www/html/dist
+                      sudo chown -R ubuntu:ubuntu /var/www/html/dist # Adjust ownership if necessary
+
+
+            - name: Copy files via SSH
+              uses: appleboy/scp-action@v0.1.4
+              with:
+                  host: ${{ secrets.EC2_HOST }} # Add your EC2 instance IP to GitHub Secrets
+                  username: ${{ secrets.EC2_User }}
+                  key: ${{ secrets.EC2_SSH_KEY }} # Add your private SSH key to GitHub Secrets
+                  source: "dist/*" # The source directory for Vite build output
+                  target: "/var/www/html/dist" # Ensure this points to the correct path
+
+
+            - name: Restart NGINX on EC2
+              uses: appleboy/ssh-action@v0.1.5
+              with:
+                  host: ${{ secrets.EC2_HOST }} # EC2 public IP in GitHub Secrets
+                  username: ${{ secrets.EC2_User }}
+                  key: ${{ secrets.EC2_SSH_KEY }} # SSH private key in GitHub Secrets
+                  script: |
+                      sudo systemctl restart nginx  # Restart NGINX after deployment
+
+
+
