@@ -38,8 +38,8 @@ jobs:
                       # ----------------------------------------
                       # A) Install or update Nginx on the host
                       # ----------------------------------------
-                      sudo yum-get update -y
-                      sudo yum-get install -y nginx
+                      sudo yum update -y
+                      sudo yum install -y nginx
 
                       # Remove the default Nginx welcome site so it won’t intercept port 80
                       sudo rm -f /etc/nginx/sites-enabled/default
@@ -81,6 +81,9 @@ jobs:
                       # ---------------------------------------------------
                       # C) Pull latest code, build Docker image, and run it
                       # ---------------------------------------------------
+                      rm -rf react-app
+                      mkdir react-app
+
                       cd ~/react-app
                       git fetch origin main
                       git reset --hard origin/main
